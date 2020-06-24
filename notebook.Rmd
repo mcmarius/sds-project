@@ -5,6 +5,8 @@ output:
   pdf_document:
     latex_engine: xelatex
   html_notebook: default
+  html_document:
+    df_print: paged
 ---
 
 ## 1. Time series
@@ -16,7 +18,7 @@ The dataset for this subject is the Air Quality Index (AQI) from Bucharest, reco
 ```{bash eval=FALSE}
 curl -k 'https://apps.roiot.ro/aerlive/api/cluster.php?q=history' \
 --data-raw 'key=d09668ea-def5-44ea-8c77-ae32e9fa5572&s=2019-01-25&e=2020-06-22&cluster=8'\
-> data_univ.json
+> data/data_univ.json
 ```
 
 Inspecting the two request parameters (`s` and `e`), we can determine that we sould have data spanning from 2019-01-25 until 2020-06-22. However, analyzing the data, we have 291 observations spanning from 2019-08-13 until 2020-06-03.
@@ -27,7 +29,7 @@ library(jsonlite)
 library(ggplot2)
 library(astsa)
 
-json = jsonlite::read_json('data_univ.json')
+json = jsonlite::read_json('data/data_univ.json')
 
 v <- c()
 for (s in json$data$ica_data$series) {
@@ -95,7 +97,7 @@ X <- diff(dataframe$value)
 acf2(X, main="ACF and PACF for differenced data")
 ```
 
-The ACF plot suggests a possible MA(3) or MA(5) model. The PACF plot suggests a possible AR(3).
+The ACF plot suggests (from my understanding) a possible MA(3) or MA(5) model. The PACF plot suggests a possible AR(3).
 The plots might also suggest larger models, but the risk of overfitting is greater.
 
 Unfortunately, there is not enough data to observe the seasonality, and the observed trend might be a bit misleading.
@@ -153,26 +155,110 @@ plot_qq(ar3)
 
 ### Predicting new values
 
-We differenced once, so `d=1` and the model would be ARMA(0, 1, 3). The next 20 predicted values are plotted below. Due to the lack of better data (based of what I have read besides the lectures - see references), it is not very surprising to obtain a flat prediction. From my understanding, this happens to be the case when (at least for this model) the data does not provide a better trend`. We might also obtain better results with a seasonal model, since that is usually the case with weather-related phenomena. It might also be the case that further initial transformations of the data are required.
+We differenced once, so `d=1` and the model would be ARMA(0, 1, 3). The next 20 predicted values are plotted below. Due to the lack of better data (based of what I have read besides the lectures - see references), it is not very surprising to obtain a flat prediction. From my understanding, this happens to be the case when (at least for this model) the data does not provide a better trend. We might also obtain better results with a seasonal model, since that is usually the case with weather-related phenomena. It might also be the case that further initial transformations of the data are required.
 
 ```{r echo=FALSE}
 fore = predict(arima(dataframe$value,order=c(0,1,3)), n.ahead=20)
-ts.plot(ts(dataframe$value), fore$pred, col=1:2)
-```
-```{r eval=FALSE, echo=FALSE}
-fit <- auto.arima(ts(dataframe$value,frequency=30),D=1)
-fc <- forecast(fit,h=30)
-plot(fc)
+ts.plot(ts(dataframe$value), fore$pred, col=1:2, xlab='', ylab='AQI')
 ```
 
 
-## Two-way ANOVA
 
-### Dataset used
+## 2. Two-way ANOVA
 
-### Results
+### Datasets used
 
-## Linear regression
+The first dataset is taken from http://users.stat.ufl.edu/~winner/data/birchpollen.dat and it originally appeared in the article "Morphological Differentiation of Betula (birch) Pollen in Northwest North America and its Palaeological Application" [Clegg et al.]. It consists of grain diameters of pollen from 5 species, "with varying numbers of locations within species (13, 6, 5, 19, 12), and 30 measurements per location".
+
+The second dataset is from "Cooking Quality of Oregon-Grown Russet Potatoes" [Mackey and Stockman] (http://users.stat.ufl.edu/~winner/data/potato.dat). This experiment is the following: we have several factors regarding growing, storing and cooking potatoes. We are interested in finding the (combination of) factors that influence texture, flavor and moistness (according to some judges).
+
+The factors have the following levels:
+
+- growing area: 1 = Southern Oregon, 2 = Central Oregon
+- two week holding temperature: 1 = 75°F (23.89°C), 2 = 40°F (4.44°C)
+- size: 1 = large, 2 = medium
+- storage period: 1 = 0 months, 2 = 2 months, 3 = 4 months, 4 = 6 months
+- cooking method: 1 = boil, 2 = steam, 3 = mash, 4 = bake\@350, 5 = bake\@450
+
+I used a text editor to remove the space from the beginning of each line and to replace the spaces with tab characters for easier processing in R.
+(I also spent many hours and used two more datasets before I found that I did not interpret the results correctly)
+
+After pre-processing, we test for the homogeneity of variances (assuming we need to separate the population into different groups).
+
+### First experiment
+
+```{r echo=FALSE}
+data2 <- read.delim('data/birchpollen.dat', header = FALSE, col.names = c('diameter', 'species', 'location'), colClasses = c('numeric', rep('integer', 2)))
+
+data2$species  <- factor(data2$species)
+data2$location <- factor(data2$location)
+
+g1 <- data2[data2$species==1,]
+g2 <- data2[data2$species==2,]
+g3 <- data2[data2$species==3,]
+g4 <- data2[data2$species==4,]
+g5 <- data2[data2$species==5,]
+bartlett.test(list(g1$diameter, g2$diameter, g3$diameter, g4$diameter, g5$diameter))
+```
+
+After looking closer at the data, we eliminate groups 1 and 4, because ANOVA requires the assumption of homogeneity of variances (Lecture 10) for it to be meaningful and the previous Bartlett test disproved that assumption.
+
+```{r echo=FALSE}
+bartlett.test(list(g2$diameter[1:10], g3$diameter[1:10], g5$diameter[1:10]))
+bartlett.test(list(g2$diameter, g3$diameter, g5$diameter))
+```
+
+We obtain that species and location have both a significant influence on the diameter of birch pollen. We also get a p-value of 1.15e-12 for "species" alone.
+
+```{r echo=FALSE}
+df235 <- data2[data2$species ==2 | data2$species == 3 | data2$species == 5,]
+anova2 <- aov(diameter~species*location,data=df235)
+summary(anova2)
+```
+
+
+### Second experiment
+
+```{r echo=FALSE}
+data3 <- read.delim('data/potato.dat', header = F, col.names = c('growing_area', 'tw_hold_temp', 'size', 'storage_period', 'cooking_method', 'texture', 'flavor', 'moistness'))
+```
+
+Below, there are some results that I would like to include, but I am not sure about the correctness.
+
+The holding temperature is significant for all effects: flavor, moistness and texture.
+
+```{r echo=FALSE}
+print(summary(aov(flavor~as.factor(tw_hold_temp),data = data3)))
+print(summary(aov(moistness~as.factor(tw_hold_temp),data = data3)))
+print(summary(aov(texture~as.factor(tw_hold_temp),data = data3)))
+```
+
+Storage period is not important for texture:
+
+```{r echo=FALSE}
+print(summary(aov(texture~as.factor(storage_period)*as.factor(tw_hold_temp),data = data3)))
+```
+
+But it does influence flavor:
+
+```{r echo=FALSE}
+print(summary(aov(flavor~as.factor(storage_period)*as.factor(tw_hold_temp),data = data3)))
+```
+
+Even though size and growing area are important on their own, the combining factor is irrelevant for moistness:
+
+```{r echo=FALSE}
+print(summary(aov(moistness~as.factor(size)*as.factor(growing_area),data = data3)))
+```
+The cooking method affects the moistness, but does not seem to have a significant influence over texture:
+
+```{r echo=FALSE}
+summary(aov(moistness~as.factor(cooking_method)*as.factor(growing_area),data = data3))
+summary(aov(texture~as.factor(cooking_method)*as.factor(growing_area),data = data3))
+```
+
+
+## 3. Linear regression
 
 ### Dataset used
 
@@ -196,6 +282,10 @@ plot(fc)
 - https://stats.stackexchange.com/questions/124955/is-it-unusual-for-the-mean-to-outperform-arima/125016#125016
 - https://rstudio.com/wp-content/uploads/2016/03/rmarkdown-cheatsheet-2.0.pdf
 - https://stackoverflow.com/questions/28032846/
-
+- B.F. Clegg, W. Tinner, D.G, Gavin, F.S. Hu (2005). "Morphological Differentiation of Betula (birch) Pollen in Northwest North America and its Palaeological Application" The Holocene, Vol. 15, #2, pp. 229-237. (from http://users.stat.ufl.edu/~winner/data/birchpollen.txt)
+- http://www.sthda.com/english/wiki/two-way-anova-test-in-r
+- Source: A. Mackey and J. Stockman (1958). "Cooking Quality of Oregon-Grown Russet Potatoes", American Potato Journal, Vol.35, pp. 395-407 (http://users.stat.ufl.edu/~winner/data/potato.txt)
+- https://en.wikipedia.org/wiki/Two-way_analysis_of_variance
+- https://explorable.com/two-way-anova
 
 
