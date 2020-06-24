@@ -260,13 +260,72 @@ summary(aov(texture~as.factor(cooking_method)*as.factor(growing_area),data = dat
 
 ## 3. Linear regression
 
-### Dataset used
+The dataset used is about the impact of container capacity for recycling on yield of materials [Baird et al.] from a recycling program in Scotland (http://users.stat.ufl.edu/~winner/data/scottish_recycle.dat).
 
-### Building the model
+```{r echo=FALSE}
+datab <- read.delim('data/scottish_recycle.dat', header=FALSE, col.names = c('auth', 'rec_capacity', 'resid_capacity', 'collected', 'yield'))
 
-### Results
+x <- datab$yield
+y1 <- datab$rec_capacity
+y2 <- datab$resid_capacity
+lmodel <- lm(x~y1+y2)
+summary(lmodel)
+```
 
-## References:
+We build the model based on recycling capacity and residual capacity (measured in liters/week).
+
+For y1, we have p-value of 0.000548, so H:{$\beta_1$ = 0} is rejected.
+
+For y2, we have p-value of 0.003298, so H:{$\beta_2$ = 0} is also rejected.
+
+We accept both hypotheses of regression of x in y~1~ and y~2~.
+
+Since the R-squared value is not very close to 1, it might be the case that some "causes" are missing from the model.
+
+```{r echo=FALSE}
+anova(lmodel)
+```
+
+
+According to the Shapiro-Wilk test, the residuals are normal, so the model proposed respects this assumption.
+
+```{r echo=FALSE}
+shapiro.test(lmodel$residuals)
+```
+
+From the goodness-of-fit analysis, we observe a bit of concentration to the right.
+
+```{r echo=FALSE, fig.height=4, fig.width=4.5}
+resid <- abs(residuals(lmodel))
+pred<-predict(lmodel)
+plot(pred,resid)
+
+```
+
+We repeat the analysis after adding the number of collected materials to the model.
+
+```{r echo=FALSE}
+y3 <- datab$collected
+lmodel2 <- lm(x~y1+y2+y3)
+summary(lmodel2)
+```
+The residuals are still normal, which is a good sign.
+
+```{r echo=FALSE}
+shapiro.test(lmodel2$residuals)
+```
+
+
+From the goodness-of-fit analysis, we observe a bit of concentration to the right. The values seem a bit more scattered now, but are still concentrated a little right next to the middle.
+
+```{r echo=FALSE, fig.height=3.75, fig.width=4.5}
+resid <- abs(residuals(lmodel2))
+pred<-predict(lmodel2)
+plot(pred,resid)
+
+```
+
+## References
 
 - the code is inspired from laboratories; I also tried to include below most of the resources I used
 - https://www.r-graph-gallery.com/279-plotting-time-series-with-ggplot2
@@ -286,6 +345,12 @@ summary(aov(texture~as.factor(cooking_method)*as.factor(growing_area),data = dat
 - http://www.sthda.com/english/wiki/two-way-anova-test-in-r
 - Source: A. Mackey and J. Stockman (1958). "Cooking Quality of Oregon-Grown Russet Potatoes", American Potato Journal, Vol.35, pp. 395-407 (http://users.stat.ufl.edu/~winner/data/potato.txt)
 - https://en.wikipedia.org/wiki/Two-way_analysis_of_variance
+- https://stackoverflow.com/questions/2933253/homoscedascity-test-for-two-way-anova
+- https://stats.stackexchange.com/questions/60410/normality-of-dependent-variable-normality-of-residuals
+- https://stats.stackexchange.com/questions/35132/assessing-normality-of-distribution
+- https://www.sheffield.ac.uk/polopoly_fs/1.536444!/file/MASH_2way_ANOVA_in_R.pdf
+- https://www.gormanalysis.com/blog/r-introduction-to-factors-tutorial/
 - https://explorable.com/two-way-anova
-
+- J. Baird, R. Curry, and T. Reid (2013). "Development and Application of a Multiple Linear Regression Model to Consider the Impact of Weekly Waste Container Capacity on the Yield from Kerbside Recycling Programs in Scotland," Waste Management & Research, Vol. 31, pp. 306-314 (http://users.stat.ufl.edu/~winner/data/scottish_recycle.txt)
+- http://www.calvin.edu/~rpruim/courses/m343/F12/RStudio/LatexExamples.html
 
