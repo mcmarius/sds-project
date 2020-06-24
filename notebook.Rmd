@@ -181,9 +181,8 @@ The factors have the following levels:
 - cooking method: 1 = boil, 2 = steam, 3 = mash, 4 = bake\@350, 5 = bake\@450
 
 I used a text editor to remove the space from the beginning of each line and to replace the spaces with tab characters for easier processing in R.
-(I also spent many hours and used two more datasets before I found that I did not interpret the results correctly)
 
-After pre-processing, we test for the homogeneity of variances (assuming we need to separate the population into different groups).
+After pre-processing, we test for the homogeneity of variances.
 
 ### First experiment
 
@@ -193,69 +192,113 @@ data2 <- read.delim('data/birchpollen.dat', header = FALSE, col.names = c('diame
 data2$species  <- factor(data2$species)
 data2$location <- factor(data2$location)
 
-g1 <- data2[data2$species==1,]
-g2 <- data2[data2$species==2,]
-g3 <- data2[data2$species==3,]
-g4 <- data2[data2$species==4,]
-g5 <- data2[data2$species==5,]
-bartlett.test(list(g1$diameter, g2$diameter, g3$diameter, g4$diameter, g5$diameter))
+groups <- c()
+for (li in levels(data2$species)) {
+  for (lj in levels(data2$location)) {
+    gr <- data2[data2$species == li & data2$location == lj,]
+    if(length(gr$diameter) > 1)
+      groups <- c(groups, list(gr$diameter))
+  }
+}
+
+bartlett.test(groups)
 ```
 
-After looking closer at the data, we eliminate groups 1 and 4, because ANOVA requires the assumption of homogeneity of variances (Lecture 10) for it to be meaningful and the previous Bartlett test disproved that assumption.
+After looking closer at the data, we eliminate groups 1, 4 and 5, because ANOVA requires the assumption of homogeneity of variances (Lecture 10) for it to be meaningful and the previous Bartlett test disproved that assumption. Other combinations of the groups based on species do not seem to pass this statistical test. I did not attempt to remove levels based on location.
 
 ```{r echo=FALSE}
-bartlett.test(list(g2$diameter[1:10], g3$diameter[1:10], g5$diameter[1:10]))
-bartlett.test(list(g2$diameter, g3$diameter, g5$diameter))
+groups <- c()
+for (li in setdiff(levels(data2$species), c("1", "4", "5"))) {
+  for (lj in levels(data2$location)) {
+    gr <- data2[data2$species == li & data2$location == lj,]
+    if(length(gr$diameter) > 0)
+      groups <- c(groups, list(gr$diameter))
+  }
+}
+
+bartlett.test(groups)
 ```
 
-We obtain that species and location have both a significant influence on the diameter of birch pollen. We also get a p-value of 1.15e-12 for "species" alone.
+I am not sure if the methodology above is correct, because it looks to me as a bit of p-hacking. This is one of the reasons I used a second dataset.
+
+We obtain that species and location have both a significant influence on the diameter of birch pollen (keeping in mind that we have eliminated three species from analysis). We also get a p-value of 0.00527 for "species" alone.
 
 ```{r echo=FALSE}
-df235 <- data2[data2$species ==2 | data2$species == 3 | data2$species == 5,]
-anova2 <- aov(diameter~species*location,data=df235)
+df23 <- data2[data2$species == 2 | data2$species == 3,]
+anova2 <- aov(diameter~species*location, data=df23)
 summary(anova2)
 ```
 
 
 ### Second experiment
 
+Testing homogeneity for `holding temperature` and `size` for all three effects: `texture`, `flavor` and `moistness`.
+
 ```{r echo=FALSE}
 data3 <- read.delim('data/potato.dat', header = F, col.names = c('growing_area', 'tw_hold_temp', 'size', 'storage_period', 'cooking_method', 'texture', 'flavor', 'moistness'))
+
+data3$growing_area   <- factor(data3$growing_area)
+data3$tw_hold_temp   <- factor(data3$tw_hold_temp)
+data3$size           <- factor(data3$size)
+data3$storage_period <- factor(data3$storage_period)
+data3$cooking_method <- factor(data3$cooking_method)
+
+bartlett_for_effect <- function(fact1, fact2, eff) {
+  groups <- c()
+  for (li in levels(data3[[fact1]])) {
+    for (lj in levels(data3[[fact2]])) {
+      gr <- data3[data3[[fact1]] == li & data3[[fact2]] == lj,]
+      groups <- c(groups, list(gr[[eff]]))
+    }
+  }
+  
+  print(bartlett.test(groups))
+}
+
+bartlett_for_effect('tw_hold_temp', 'size', 'texture')
+```
+```{r echo=FALSE}
+bartlett_for_effect('tw_hold_temp', 'size', 'flavor')
+```
+```{r echo=FALSE}
+bartlett_for_effect('tw_hold_temp', 'size', 'moistness')
 ```
 
-Below, there are some results that I would like to include, but I am not sure about the correctness.
+The groups for holding temperature and size seem to have the same variance across all effects.
 
-The holding temperature is significant for all effects: flavor, moistness and texture.
+The holding temperature is significant for all effects, but size does not seem to influence flavor. Here we have `flavor~holding_temperature*size`:
 
 ```{r echo=FALSE}
-print(summary(aov(flavor~as.factor(tw_hold_temp),data = data3)))
-print(summary(aov(moistness~as.factor(tw_hold_temp),data = data3)))
-print(summary(aov(texture~as.factor(tw_hold_temp),data = data3)))
+print(summary(aov(flavor~tw_hold_temp*size, data = data3)))
 ```
 
-Storage period is not important for texture:
+ Here we have `moistness~holding_temperature*size`:
 
 ```{r echo=FALSE}
-print(summary(aov(texture~as.factor(storage_period)*as.factor(tw_hold_temp),data = data3)))
+print(summary(aov(moistness~tw_hold_temp*size, data = data3)))
 ```
 
-But it does influence flavor:
+Here we have `texture~holding_temperature*size`. Even though temperature and size are important on their own, the combining factor is irrelevant for moistness and texture:
 
 ```{r echo=FALSE}
-print(summary(aov(flavor~as.factor(storage_period)*as.factor(tw_hold_temp),data = data3)))
+print(summary(aov(texture~tw_hold_temp*size, data = data3)))
 ```
 
-Even though size and growing area are important on their own, the combining factor is irrelevant for moistness:
-
-```{r echo=FALSE}
-print(summary(aov(moistness~as.factor(size)*as.factor(growing_area),data = data3)))
-```
-The cooking method affects the moistness, but does not seem to have a significant influence over texture:
+The cooking method does not seem to have a significant influence over texture, but combined with growing area it does:
 
 ```{r echo=FALSE}
-summary(aov(moistness~as.factor(cooking_method)*as.factor(growing_area),data = data3))
-summary(aov(texture~as.factor(cooking_method)*as.factor(growing_area),data = data3))
+bartlett_for_effect('cooking_method', 'growing_area', 'texture')
+print(summary(aov(texture~cooking_method*growing_area, data = data3)))
 ```
+
+Here, we have `flavor~storage_period*cooking_method`, where both factors determine the flavor.
+
+```{r echo=FALSE}
+bartlett_for_effect('storage_period', 'cooking_method', 'flavor')
+print(summary(aov(flavor~storage_period*cooking_method, data = data3)))
+```
+
+The other cases are similar to those above or do not pass Bartlett's test.
 
 
 ## 3. Linear regression
@@ -353,4 +396,5 @@ plot(pred,resid)
 - https://explorable.com/two-way-anova
 - J. Baird, R. Curry, and T. Reid (2013). "Development and Application of a Multiple Linear Regression Model to Consider the Impact of Weekly Waste Container Capacity on the Yield from Kerbside Recycling Programs in Scotland," Waste Management & Research, Vol. 31, pp. 306-314 (http://users.stat.ufl.edu/~winner/data/scottish_recycle.txt)
 - http://www.calvin.edu/~rpruim/courses/m343/F12/RStudio/LatexExamples.html
+- https://en.wikipedia.org/wiki/Data_dredging
 
